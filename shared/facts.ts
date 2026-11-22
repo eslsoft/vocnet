@@ -21,7 +21,7 @@ export const topicIdSchema = z
   .regex(/^[a-z][a-z0-9]*(-[a-z0-9]+)*$/, 'A topic id is lowercase words joined by hyphens.')
   .max(64)
   .brand<'TopicId'>()
-  .meta({ description: 'A stable topic id from GET /v1/topics, such as hospital.' })
+  .meta({ description: 'A stable topic id from GET /v1/topics, such as healthcare.' })
 export type TopicId = z.infer<typeof topicIdSchema>
 
 export const posSchema = z
@@ -720,7 +720,10 @@ export const factPayloadSchemas = {
   example: examplePayloadSchema,
   translation: translationPayloadSchema,
   topic: z.strictObject({
-    topic_id: topicIdSchema.meta({ description: 'A leaf topic of the taxonomy (GET /v1/topics), never a category.' }),
+    topic_id: topicIdSchema.meta({
+      description:
+        "A topic of the taxonomy (GET /v1/topics): the one the meaning of the sense belongs to, or its category when none of the category's topics holds it.",
+    }),
   }),
   grammar: grammarPayloadSchema,
   morphology: morphologyPayloadSchema,

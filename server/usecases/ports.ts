@@ -263,6 +263,8 @@ export interface StoredMember {
 export interface StoredTaggedSense {
   summary: StoredSenseSummary
   rare: boolean
+  /** The tag is a specialized sense of a word whose main sense lies outside the topic's category. */
+  specialized: boolean
 }
 
 /** What a topic or a category lists: its public senses, each once, and the entries with a common one. */
@@ -277,13 +279,13 @@ export interface EntryFilter {
   /** The lemma starts with it; empty for any lemma. */
   prefix: string
   /**
-   * A meaning of the entry, or with `leaves` a sense tagged with one of them, has one of these
+   * A meaning of the entry, or with `topics` a sense tagged with one of them, has one of these
    * levels (any when empty) and this part of speech (any when null).
    */
   levels: readonly CefrLevel[]
   pos: Pos | null
-  /** Leaf topics one of its senses is tagged with; null for no topic filter. */
-  leaves: readonly TopicId[] | null
+  /** Topics one of its senses is tagged with; null for no topic filter. */
+  topics: readonly TopicId[] | null
 }
 
 /** A search: the exact query for the lemma tiers, the index terms it must all match, and the scopes to match them in. */
@@ -311,11 +313,11 @@ export interface PublicViewRepo {
   /** Summaries of the built public entries the filter admits, by lemma or by frequency then lemma. */
   listEntries(filter: EntryFilter, sort: EntrySort, page: PageRequest): Promise<Page<StoredSummary>>
   /**
-   * Built public senses tagged with one of these leaves, each once, by lemma, frequency, or level,
-   * each then by lemma and sense.
+   * Built public senses tagged with one of these topics, each once, core vocabulary before
+   * specialized senses, by lemma, frequency, or level, each then by lemma and sense.
    */
-  listTaggedSenses(leaves: readonly TopicId[], sort: SenseSort, page: PageRequest): Promise<Page<StoredTaggedSense>>
-  /** What every leaf topic with a tagged public sense lists, and every category over its leaves. */
+  listTaggedSenses(topics: readonly TopicId[], sort: SenseSort, page: PageRequest): Promise<Page<StoredTaggedSense>>
+  /** What every topic with a tagged public sense lists, and every category over its own tags and its topics'. */
   countTagged(): Promise<TopicCount[]>
   /** The stored documents, each with its digest, of the built public entries spelled exactly as these lemmas, in any order. */
   findDocuments(lemmas: readonly Lemma[]): Promise<StoredView[]>

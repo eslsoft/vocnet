@@ -1,6 +1,6 @@
 import type { TopicId } from '@shared/facts'
 import { describe, expect, it } from 'vitest'
-import { isLeaf, leafViews, leavesUnder, type TopicNode, topicTree } from './topics'
+import { categoryIdOf, isLeaf, type TopicNode, topicsUnder, topicTree, topicViewOf, topicViews } from './topics'
 
 const node = (id: string, parentId: string | null, position: number): TopicNode => ({
   id: id as TopicId,
@@ -36,18 +36,24 @@ describe('topic taxonomy', () => {
     })
   })
 
-  it('shows a reviewer each leaf with its category name', () => {
-    expect(leafViews(nodes)).toEqual([
-      { category: 'home en', topic: 'kitchen en' },
-      { category: 'food en', topic: 'fruit en' },
-      { category: 'food en', topic: 'drinks en' },
+  it('shows a reviewer each category with its topics, and each topic with its category name', () => {
+    expect(topicViews(nodes)).toEqual([
+      { category: null, topic: 'home en', topics: ['kitchen en'] },
+      { category: 'home en', topic: 'kitchen en', topics: [] },
+      { category: null, topic: 'food en', topics: ['fruit en', 'drinks en'] },
+      { category: 'food en', topic: 'fruit en', topics: [] },
+      { category: 'food en', topic: 'drinks en', topics: [] },
     ])
+    expect(topicViewOf('drinks' as TopicId, nodes)).toEqual({ category: 'food en', topic: 'drinks en', topics: [] })
+    expect(topicViewOf('unknown' as TopicId, nodes)).toBeNull()
+    expect(() => topicViewOf('lost' as TopicId, [node('lost', 'gone', 0)])).toThrow('which does not exist')
   })
 
-  it('selects a leaf itself and a category by its leaves [spec: topics/senses]', () => {
+  it('selects a topic itself and a category with its topics [spec: topics/senses]', () => {
     const fruit = nodes[3] as TopicNode
     expect([isLeaf(fruit), isLeaf(food)]).toEqual([true, false])
-    expect(leavesUnder(fruit, nodes)).toEqual(['fruit'])
-    expect(leavesUnder(food, nodes)).toEqual(['drinks', 'fruit'])
+    expect(topicsUnder(fruit, nodes)).toEqual(['fruit'])
+    expect(topicsUnder(food, nodes)).toEqual(['food', 'drinks', 'fruit'])
+    expect([categoryIdOf(fruit), categoryIdOf(food)]).toEqual(['food', 'food'])
   })
 })

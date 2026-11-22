@@ -21,7 +21,7 @@ import {
   type Opinion,
   scoreOf,
 } from '@server/domain/review-chain'
-import type { TopicView } from '@server/domain/topics'
+import { topicViewOf } from '@server/domain/topics'
 import {
   blindGuessesSchema,
   type EntryId,
@@ -31,7 +31,6 @@ import {
   type Review,
   type SenseId,
   type SentenceId,
-  type TopicId,
 } from '@shared/facts'
 import type { MediaId } from '@shared/media'
 import type { Deps } from './deps'
@@ -128,15 +127,6 @@ const subjectLoaders: { [S in keyof SubjectViews]: (deps: ReviewDeps, id: string
   },
 }
 
-/** A leaf topic with its category's name; null when the id names no leaf topic. */
-async function topicView(deps: ReviewDeps, id: TopicId): Promise<TopicView | null> {
-  const topic = await deps.topics.find(id)
-  if (!topic?.parentId) return null
-  const category = await deps.topics.find(topic.parentId)
-  if (!category) throw new Error(`Topic ${id} belongs to category ${topic.parentId}, which does not exist.`)
-  return { category: category.nameEn, topic: topic.nameEn }
-}
-
 async function loadContext<K extends FactKind>(
   deps: ReviewDeps,
   fact: FactOf<K>,
@@ -148,7 +138,7 @@ async function loadContext<K extends FactKind>(
   return {
     subject: subject as SubjectViews[SubjectTypeOf[K]],
     target: target ? await senseContext(deps, target) : null,
-    topic: topic ? await topicView(deps, topic) : null,
+    topic: topic ? topicViewOf(topic, await deps.topics.list()) : null,
     named: await namedNodesOf(deps, fact as Fact),
   }
 }

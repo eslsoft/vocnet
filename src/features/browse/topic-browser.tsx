@@ -1,4 +1,4 @@
-import type { TopicTree } from '@shared/topics'
+import type { TopicSense, TopicTree } from '@shared/topics'
 import { useTranslation } from 'react-i18next'
 import { Link } from 'react-router'
 import { CefrBadge, wordPath } from '@/features/dictionary'
@@ -16,6 +16,35 @@ function useTopicName() {
   return (topic: Named) => (i18n.language.startsWith('zh') ? topic.name.zh : topic.name.en)
 }
 
+function SenseCards({ senses }: { senses: readonly TopicSense[] }) {
+  const { t } = useTranslation()
+  return (
+    <ul className="grid gap-2 sm:grid-cols-2">
+      {senses.map((sense) => (
+        <li key={sense.sense_id}>
+          <Link
+            to={wordPath(sense.lemma, sense.sense_id)}
+            className="flex h-full flex-col gap-1 rounded-lg border bg-card px-4 py-3 transition-colors hover:border-primary/50"
+          >
+            <span className="flex items-baseline gap-2">
+              <span className="font-semibold font-serif text-lg">{sense.lemma}</span>
+              <span className="text-muted-foreground text-xs italic">{t(`pos.${sense.pos}`)}</span>
+              {sense.cefr ? <CefrBadge level={sense.cefr} className="self-center" /> : null}
+              {sense.translation ? (
+                <span lang="zh-CN" className="ml-auto text-muted-foreground text-sm">
+                  {sense.translation}
+                </span>
+              ) : null}
+            </span>
+            <span className="line-clamp-2 text-muted-foreground text-sm">{sense.gloss}</span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
+/** A topic's senses, its core vocabulary first and then the specialized senses of everyday words. */
 function TopicSenses({ topic, tree }: { topic: string; tree: TopicTree }) {
   const { t } = useTranslation()
   const name = useTopicName()
@@ -37,28 +66,16 @@ function TopicSenses({ topic, tree }: { topic: string; tree: TopicTree }) {
         </div>
       ) : null}
       {senses.data && items.length === 0 ? <p className="text-muted-foreground">{t('browse.emptyTopic')}</p> : null}
-      <ul className="grid gap-2 sm:grid-cols-2">
-        {items.map((sense) => (
-          <li key={sense.sense_id}>
-            <Link
-              to={wordPath(sense.lemma, sense.sense_id)}
-              className="flex h-full flex-col gap-1 rounded-lg border bg-card px-4 py-3 transition-colors hover:border-primary/50"
-            >
-              <span className="flex items-baseline gap-2">
-                <span className="font-semibold font-serif text-lg">{sense.lemma}</span>
-                <span className="text-muted-foreground text-xs italic">{t(`pos.${sense.pos}`)}</span>
-                {sense.cefr ? <CefrBadge level={sense.cefr} className="self-center" /> : null}
-                {sense.translation ? (
-                  <span lang="zh-CN" className="ml-auto text-muted-foreground text-sm">
-                    {sense.translation}
-                  </span>
-                ) : null}
-              </span>
-              <span className="line-clamp-2 text-muted-foreground text-sm">{sense.gloss}</span>
-            </Link>
-          </li>
-        ))}
-      </ul>
+      <SenseCards senses={items.filter((sense) => !sense.specialized)} />
+      {items.some((sense) => sense.specialized) ? (
+        <section aria-labelledby="specialized-title" className="flex flex-col gap-2 pt-2">
+          <h3 id="specialized-title" className="font-semibold text-lg">
+            {t('browse.specialized')}
+          </h3>
+          <p className="text-muted-foreground text-sm">{t('browse.specializedHint')}</p>
+          <SenseCards senses={items.filter((sense) => sense.specialized)} />
+        </section>
+      ) : null}
       {senses.hasNextPage ? (
         <Button
           variant="outline"
@@ -73,7 +90,7 @@ function TopicSenses({ topic, tree }: { topic: string; tree: TopicTree }) {
   )
 }
 
-/** The topic taxonomy: categories group leaf topics, and a topic lists the senses tagged with it. */
+/** The topic taxonomy: categories group topics, and a topic or category lists the senses tagged with it. */
 export function TopicBrowser() {
   const { t } = useTranslation()
   const name = useTopicName()
@@ -102,18 +119,18 @@ export function TopicBrowser() {
               {name(category)}
             </button>
             <ul className="flex flex-wrap gap-1 lg:flex-col lg:gap-0">
-              {category.topics.map((leaf) => (
-                <li key={leaf.id}>
+              {category.topics.map((child) => (
+                <li key={child.id}>
                   <button
                     type="button"
-                    aria-current={topic === leaf.id ? 'true' : undefined}
-                    onClick={() => setParam('topic', leaf.id)}
+                    aria-current={topic === child.id ? 'true' : undefined}
+                    onClick={() => setParam('topic', child.id)}
                     className={cn(
                       'w-full rounded-md px-2 py-1 text-left text-muted-foreground text-sm hover:bg-muted hover:text-foreground',
-                      topic === leaf.id && 'bg-accent font-medium text-accent-foreground',
+                      topic === child.id && 'bg-accent font-medium text-accent-foreground',
                     )}
                   >
-                    {name(leaf)}
+                    {name(child)}
                   </button>
                 </li>
               ))}

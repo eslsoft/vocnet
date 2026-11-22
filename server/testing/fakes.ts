@@ -1,4 +1,3 @@
-import type { StoredSenseSummary } from '@server/domain/catalog-view'
 import { isCurated } from '@server/domain/curation'
 import { type Fact, type FactOf, isKind } from '@server/domain/fact'
 import { factKinds, type JevQuestions, type Link, type LlmPrompt, slotOf } from '@server/domain/fact-kinds'
@@ -11,7 +10,7 @@ import { levelRank } from '@server/domain/reference'
 import { EXACT_LEMMA_TIER, fieldTier, LEMMA_PREFIX_TIER, SEARCH_TIERS } from '@server/domain/search'
 import { isMultiword, type Lemma, textKey } from '@server/domain/term'
 import type { TicketRecord } from '@server/domain/tickets'
-import { leavesUnder, type TopicNode } from '@server/domain/topics'
+import { type TopicNode, topicsUnder } from '@server/domain/topics'
 import { passKey, type WorkItem, type WorkLease } from '@server/domain/work'
 import type { Deps } from '@server/usecases/deps'
 import { ConflictError } from '@server/usecases/errors'
@@ -24,6 +23,7 @@ import type {
   ServiceRecord,
   StaleWork,
   StoredMember,
+  StoredTaggedSense,
   TicketRepo,
   ViewLookup,
   WithEntry,
@@ -1104,15 +1104,15 @@ export function fakeWorld(): FakeWorld {
               pos: form.pos,
             })),
         ),
-      listEntries: async ({ prefix, levels, pos, leaves }, sort, page) => {
+      listEntries: async ({ prefix, levels, pos, topics }, sort, page) => {
         const fits = (candidate: { pos: Pos; cefr: CefrLevel | null }) =>
           (pos === null || candidate.pos === pos) &&
           (levels.length === 0 || (candidate.cefr !== null && levels.includes(candidate.cefr)))
         const admitted = builtViews().filter(
           (record) =>
             record.document.lemma.startsWith(prefix) &&
-            (leaves
-              ? record.taggedSenses.some((tag) => leaves.includes(tag.topicId) && !tag.rare && fits(tag.summary))
+            (topics
+              ? record.taggedSenses.some((tag) => topics.includes(tag.topicId) && !tag.rare && fits(tag.summary))
               : pos === null && levels.length === 0
                 ? true
                 : record.meanings.some(fits)),
@@ -1124,22 +1124,28 @@ export function fakeWorld(): FakeWorld {
           page.cursor,
         )
       },
-      listTaggedSenses: async (leaves, sort, page) => {
-        const tagged = new Map<string, { summary: StoredSenseSummary; rare: boolean; order: number }>()
+      listTaggedSenses: async (topics, sort, page) => {
+        const tagged = new Map<string, StoredTaggedSense & { order: number }>()
         for (const record of builtViews()) {
-          for (const tag of record.taggedSenses.filter((candidate) => leaves.includes(candidate.topicId))) {
+          for (const tag of record.taggedSenses.filter((candidate) => topics.includes(candidate.topicId))) {
             const order = { lemma: 0, frequency: record.frequencyOrder, level: tag.levelOrder }[sort]
-            tagged.set(tag.summary.sense_id, { summary: tag.summary, rare: tag.rare, order })
+            tagged.set(tag.summary.sense_id, {
+              summary: tag.summary,
+              rare: tag.rare,
+              specialized: tag.specialized,
+              order,
+            })
           }
         }
         const ordered = [...tagged.values()].sort(
           (a, b) =>
+            Number(a.specialized) - Number(b.specialized) ||
             a.order - b.order ||
             a.summary.lemma.localeCompare(b.summary.lemma) ||
             a.summary.sense_id.localeCompare(b.summary.sense_id),
         )
         return paged(
-          ordered.map(({ summary, rare }) => ({ summary, rare })),
+          ordered.map(({ summary, rare, specialized }) => ({ summary, rare, specialized })),
           page.limit,
           page.cursor,
         )
@@ -1148,8 +1154,8 @@ export function fakeWorld(): FakeWorld {
         const tags = builtViews().flatMap((record) =>
           record.taggedSenses.map((tag) => ({ ...tag, entryId: record.document.id })),
         )
-        const countOf = (topicId: TopicId, leaves: readonly TopicId[]) => {
-          const own = tags.filter((tag) => leaves.includes(tag.topicId))
+        const countOf = (topicId: TopicId, topics: readonly TopicId[]) => {
+          const own = tags.filter((tag) => topics.includes(tag.topicId))
           return {
             topicId,
             senses: new Set(own.map((tag) => tag.summary.sense_id)).size,
@@ -1157,7 +1163,7 @@ export function fakeWorld(): FakeWorld {
           }
         }
         return world.topics
-          .map((node) => countOf(node.id, leavesUnder(node, world.topics)))
+          .map((node) => countOf(node.id, topicsUnder(node, world.topics)))
           .filter((count) => count.senses > 0)
       },
       findDocuments: async (lemmas) =>

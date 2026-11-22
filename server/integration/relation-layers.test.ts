@@ -132,20 +132,20 @@ describe('relation layers', () => {
       call('/manage/v1/facts', {
         method: 'POST',
         token,
-        json: { kind: 'topic', subject_id: senseId, payload: { topic_id: 'hospital-doctor' } },
+        json: { kind: 'topic', subject_id: senseId, payload: { topic_id: 'healthcare' } },
       })
     expect((await tag(rare)).status).toBe(201)
     await settle()
     const listed = async () =>
-      entryPageSchema.parse((await call('/v1/entries?topic=hospital-doctor')).body).items.map((item) => item.lemma)
+      entryPageSchema.parse((await call('/v1/entries?topic=healthcare')).body).items.map((item) => item.lemma)
     expect(await listed()).toEqual([])
     // The topic's senses still list the rare sense itself.
-    const senses = topicSensePageSchema.parse((await call('/v1/topics/hospital-doctor/senses')).body)
+    const senses = topicSensePageSchema.parse((await call('/v1/topics/healthcare/senses')).body)
     expect(senses.items.map((item) => [item.sense_id, item.rare])).toEqual([[rare, true]])
     // The taxonomy counts what each list shows: the rare sense, and no entry yet.
     const counted = async () => {
       const { categories } = topicTreeSchema.parse((await call('/v1/topics')).body)
-      const topic = categories.flatMap((category) => category.topics).find((leaf) => leaf.id === 'hospital-doctor')
+      const topic = categories.flatMap((category) => category.topics).find((leaf) => leaf.id === 'healthcare')
       return [topic?.sense_count, topic?.entry_count]
     }
     expect(await counted()).toEqual([1, 0])

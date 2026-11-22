@@ -99,8 +99,11 @@ describe('BrowsePage', () => {
       `/words/lion#sense-${memberIds.lion}`,
     )
     expect(api.reads.at(-1)?.search).toBe('?sort=frequency&lang=zh&limit=40')
+    expect(screen.queryByRole('heading', { name: 'Specialized senses' })).not.toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }))
-    expect(await screen.findByRole('link', { name: /tiger/ })).toBeInTheDocument()
+    // A specialized sense lists under its own heading, after the topic's core vocabulary.
+    const specialized = await screen.findByRole('region', { name: 'Specialized senses' })
+    expect(within(specialized).getByRole('link', { name: /tiger/ })).toBeInTheDocument()
 
     fireEvent.click(within(screen.getByRole('navigation', { name: 'Topics' })).getByRole('button', { name: 'Nature' }))
     expect(await screen.findByText('No published words carry this topic yet.')).toBeInTheDocument()

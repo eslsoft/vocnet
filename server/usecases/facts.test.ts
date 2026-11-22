@@ -569,7 +569,7 @@ describe('submitting grammar, topics, word formation, and collocations', () => {
     ).rejects.toMatchObject({ code: 'invalid_reference' })
   })
 
-  it('tags only a leaf topic, at most three per sense', async () => {
+  it('tags a topic or a category of the taxonomy, at most three per sense', async () => {
     const { world, river } = await bankWorld()
     const tag = (topic: string) =>
       submit(world, { kind: 'topic', subject_id: river, payload: { topic_id: topic as TopicId } })
@@ -577,11 +577,7 @@ describe('submitting grammar, topics, word formation, and collocations', () => {
       code: 'invalid_reference',
       message: expect.stringContaining('does not exist'),
     })
-    await expect(tag('home')).rejects.toMatchObject({
-      code: 'invalid_reference',
-      message: expect.stringContaining('topic category'),
-    })
-    for (const leaf of ['furniture', 'kitchen', 'dentist']) await tag(leaf)
+    for (const topic of ['home', 'kitchen', 'dentist']) await tag(topic)
     await expect(tag('body-parts')).rejects.toMatchObject({
       code: 'conflict',
       message: 'A sense holds at most 3 live topic facts; retract one before adding another.',

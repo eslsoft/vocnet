@@ -6,8 +6,8 @@ import { workCriteria } from './work-criteria'
 
 const sense = '00000000-0000-4000-8000-000000000001' as SenseId
 const taxonomy = [
-  { category: 'Home', topic: 'In the kitchen' },
-  { category: 'Sport', topic: 'Football' },
+  { category: 'Homes and buildings', topic: 'Houses and homes', topics: [] },
+  { category: 'Sport', topic: 'Ball and racket sports', topics: [] },
 ]
 const of = (gap: Gap, pos: 'noun' | 'adjective' | 'number' | null = 'noun') => workCriteria(gap, pos, taxonomy)
 
@@ -35,7 +35,7 @@ describe('workCriteria', () => {
       {
         subject: { lemma: '<word>', pos: 'noun', gloss: '<the gloss of the sense>', siblings: [] },
         target: null,
-        topic: { category: '<category>', topic: '<topic>' },
+        topic: { category: '<category>', topic: '<topic>', topics: [] },
         named: NO_NAMED_NODES,
       },
     )

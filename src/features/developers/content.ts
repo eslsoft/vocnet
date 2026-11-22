@@ -125,11 +125,11 @@ const zh: GuideText = {
     },
     topics: {
       title: '话题分类',
-      body: '返回全部类别及其叶子话题，各带名称以及它列出的公开义项数和词条数；只有叶子话题会标注到义项上。',
+      body: '返回全部类别及其话题，各带名称以及它列出的公开义项数和词条数。义项按意思标注到所属话题；没有合适话题时标注到类别本身。',
     },
     'topic-senses': {
       title: '话题下的义项',
-      body: '返回标注了该话题的已发布义项；传入类别时包含其所有叶子话题。可按 lemma、frequency 或 level 排序。',
+      body: '返回标注了该话题的已发布义项；传入类别时包含类别本身及其所有话题。核心词在前，专门义项（specialized）在后，各自可按 lemma、frequency 或 level 排序。',
     },
     sources: {
       title: '数据来源',
@@ -249,11 +249,11 @@ const en: GuideText = {
     },
     topics: {
       title: 'Topic taxonomy',
-      body: 'Every category with its leaf topics, each with its names and how many public senses and entries it lists; only leaves tag senses.',
+      body: 'Every category with its topics, each with its names and how many public senses and entries it lists. A sense is tagged with the topic its meaning belongs to, or with the category when none of its topics fits.',
     },
     'topic-senses': {
       title: 'Senses of a topic',
-      body: 'The published senses tagged with a topic, or with any topic of a category, by lemma, frequency, or level.',
+      body: 'The published senses tagged with a topic, or with a category and any of its topics: core senses first, then specialized ones, each by lemma, frequency, or level.',
     },
     sources: {
       title: 'Data sources',

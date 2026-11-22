@@ -146,7 +146,7 @@ export const gapSchema = z
           'The listed parts of speech need a productive_use fact: whether native speakers use the word in its common senses of that part of speech themselves (native) and whether an advanced (CEFR C1) learner needs to (learner), or only understand it. The server classifies these itself; agents are never handed such an item.',
       }),
     z.object({ type: z.literal('topics'), ...senseGap }).meta({
-      description: `The core sense has no live topic fact. Core nouns and verbs have a topics slot; tag only a leaf topic of the taxonomy (GET /v1/topics). ${OPTIONAL}`,
+      description: `The core sense has no live topic fact. Core nouns and verbs have a topics slot; tag the topic of the taxonomy (GET /v1/topics) the meaning belongs to, or its category when none of the category's topics holds it. ${OPTIONAL}`,
     }),
     z.object({ type: z.literal('grammar'), ...senseGap }).meta({
       description: `A noun, verb, adjective, adverb, determiner, or pronoun sense has no live grammar fact: countability for a noun, transitivity for a verb, position, patterns, or prepositions for an adjective, the usual position (front, mid, end) or prepositions for an adverb, and agreement for a determiner or pronoun. ${OPTIONAL}`,

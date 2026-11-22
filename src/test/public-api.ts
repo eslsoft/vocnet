@@ -379,10 +379,16 @@ export function networkApi({ topicsFail = false } = {}) {
       reads.push(url)
       if (params.id === 'nature') return HttpResponse.json({ lang: 'zh', items: [], next_cursor: null })
       const cursor = url.searchParams.get('cursor')
-      const item = (lemma: string) => ({ ...memberOf(lemma, 1), depth: undefined, parents: undefined, rare: false })
+      const item = (lemma: string, specialized = false) => ({
+        ...memberOf(lemma, 1),
+        depth: undefined,
+        parents: undefined,
+        rare: false,
+        specialized,
+      })
       return HttpResponse.json(
         cursor
-          ? { lang: 'zh', items: [item('tiger')], next_cursor: null }
+          ? { lang: 'zh', items: [item('tiger', true)], next_cursor: null }
           : { lang: 'zh', items: [item('lion')], next_cursor: 'page-2' },
       )
     }),

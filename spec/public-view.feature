@@ -110,7 +110,7 @@ Feature: Public view
   @public-view/list-filters @api
   Scenario: Entry lists filter by level, part of speech, and topic and sort by frequency
     Given published entries with CEFR levels, frequencies, several parts of speech, and topic tags
-    When the entry list is read with level (repeated or comma-separated), pos, topic (a leaf or a category), and sort, page by page
+    When the entry list is read with level (repeated or comma-separated), pos, topic (a topic or a category), and sort, page by page
     Then it keeps the entries with one meaning, or with a topic one tagged sense, of that part of speech at one of those levels, in lemma order or by frequency with unranked entries last, every page continuing where the last stopped; a cursor of another sort, an unknown level or sort is 400 and an unknown topic 404
 
   @public-view/topic-common-senses @api
@@ -156,16 +156,17 @@ Feature: Public view
 
   @public-view/topic-category @usecase
   Scenario: A topic tag shows its category
-    Given a public sense tagged with a leaf topic
+    Given a public sense tagged with a topic, and one tagged with a category
     When its entry or the sense is read
     Then each topic tag carries its category's id and name from the taxonomy as it is now, in the read's language, and the taxonomy is part of the read's ETag
+    And a tag naming a category carries a null category
     And a tag whose topic the taxonomy lacks fails the read
 
   @public-view/topic-sort @api
   Scenario: The senses of a topic sort by lemma, frequency, or level
     Given senses of entries with frequencies and levels tagged with topics of one category
-    When a leaf or the category is listed with sort lemma, frequency, or level, page by page
-    Then the senses come in that order, ties by lemma and sense, each once, the same across pages
+    When a topic or the category is listed with sort lemma, frequency, or level, page by page
+    Then the core senses come first, then the specialized ones, each group in that order, ties by lemma and sense, each once, the same across pages
 
   @public-view/list-indexes @api
   Scenario: Lists and search read through indexes

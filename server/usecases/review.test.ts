@@ -348,13 +348,16 @@ describe('reviewFact', () => {
     await expect(reviewFact(world.deps, orphanSentence.id, 't')).rejects.toThrow('does not exist')
   })
 
-  it('reads a topic id that names a category as no topic, and fails on a leaf whose category is gone', async () => {
+  it('reads a category with its topics, rejects a topic the taxonomy lacks, and fails on a topic whose category is gone', async () => {
     const { world, river } = await bankWorld()
     const category = rawFact(world, { kind: 'topic', subjectId: river, payload: { topic_id: 'home' as TopicId } })
-    await expect(reviewFact(world.deps, category.id, 't')).resolves.toBe('rejected')
-    expect((await getFact(world.deps, category.id)).review?.reason).toBe(
-      'The referenced topic is not a leaf topic of the taxonomy.',
-    )
+    await reviewFact(world.deps, category.id, 't')
+    expect((await getFact(world.deps, category.id)).review?.context).toMatchObject({
+      topic: { category: null, topic: expect.any(String), topics: expect.arrayContaining([expect.any(String)]) },
+    })
+    const unknown = rawFact(world, { kind: 'topic', subjectId: river, payload: { topic_id: 'nowhere' as TopicId } })
+    await expect(reviewFact(world.deps, unknown.id, 't')).resolves.toBe('rejected')
+    expect((await getFact(world.deps, unknown.id)).review?.reason).toBe('The referenced topic is not in the taxonomy.')
     world.topics.splice(
       world.topics.findIndex((node) => node.id === 'home'),
       1,

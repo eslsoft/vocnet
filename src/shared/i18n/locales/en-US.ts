@@ -643,6 +643,8 @@ export const enUS = {
     noKinds: 'No kinds listed yet.',
     pickTopic: 'Pick a topic to see its words.',
     emptyTopic: 'No published words carry this topic yet.',
+    specialized: 'Specialized senses',
+    specializedHint: 'Everyday words with a meaning in this subject.',
   },
   home: {
     eyebrow: 'Open learner’s dictionary · relation network · public API',

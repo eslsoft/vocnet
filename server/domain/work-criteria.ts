@@ -76,7 +76,7 @@ const targetView = (pos: Pos): SubjectViews['sense'] => ({
   gloss: '<the gloss of its sense>',
   siblings: [],
 })
-const topicView: TopicView = { category: '<category>', topic: '<topic>' }
+const topicView: TopicView = { category: '<category>', topic: '<topic>', topics: [] }
 
 const relation = (type: FactPayloads['relation']['type'], claim: string) =>
   sample('relation', claim, { type, target_sense_id: TARGET })

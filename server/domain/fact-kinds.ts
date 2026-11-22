@@ -906,59 +906,66 @@ function planTranslation(
   )
 }
 
-/** A topic fact names a leaf topic; one that does not exist leaves nothing to judge. */
+/** A topic fact names a topic or a category; one that does not exist leaves nothing to judge. */
 function withTopic(topic: TopicView | null, build: (topic: TopicView) => ReviewPlan): ReviewPlan {
-  if (topic === null)
-    return { kind: 'unreviewable', reason: 'The referenced topic is not a leaf topic of the taxonomy.' }
+  if (topic === null) return { kind: 'unreviewable', reason: 'The referenced topic is not in the taxonomy.' }
   return build(topic)
 }
 
-const describeTopic = ({ category, topic }: TopicView) => `${quote(topic)} (in the category ${quote(category)})`
+const describeTopic = ({ category, topic, topics }: TopicView) =>
+  category === null
+    ? `the category ${quote(topic)}, whose topics are ${topics.map(quote).join(', ')}`
+    : `${quote(topic)} (in the category ${quote(category)})`
 
 const TOPIC_PASSES = [
-  '"oven" (a cooking appliance) in "Household appliances"',
-  '"credit" (money a bank lends) in "Banking"',
-  '"autumn" (the season after summer) in "Seasons and climate"',
-  '"vessel" (a tube carrying blood) in "Parts of the body"',
+  '"oven" (a cooking appliance) in "Houses and homes"',
+  '"credit" (money a bank lends) in "Money and the economy"',
+  '"vessel" (a tube carrying blood) in "Body"',
   '"brass" (instruments made of brass) in "Music"',
-  '"connection" (an onward train or flight) in "Trains and subway"',
-  '"damage" (money a court awards) in "Law and courts"',
-  '"angry" in "Emotions"',
-  '"bright" (of a vivid colour) in "Colours and shapes"',
+  '"damages" (money a court awards) in "Law and justice"',
+  '"angry" in "Feelings"',
+  '"big" (of considerable size) in "Describing things"',
+  '"first" (the lowest forward gear) in "Cars and roads": a specialized sense of a general word, still a meaning of that subject',
+  '"in" (within the playing area) in "Ball and racket sports"',
+  '"travel" (go from place to place) in the category "Travel and transport": the category holds the meaning and none of its topics does',
 ]
 
 const TOPIC_FAILS = [
-  '"full" (holding as much as possible) in "Hotels and accommodation": a general word that can turn up in any scene.',
-  '"stop" (cease functioning) in "Driving and cars": anything can stop working; the sense is not about driving.',
-  '"poor" (of low quality) in "Returns and complaints": a general judgement word.',
-  '"stretch" (a period of time) in "Time and dates": a general word, not time vocabulary a learner studies.',
-  '"event" in "News and journalism": a general noun the news uses like every other topic.',
-  '"comfort" in "House and rooms": a loose association.',
-  '"go" (attend an activity) in "Religion and beliefs": the topic fits going to church, not this general sense.',
-  '"free" (containing nothing harmful) in "Environment and pollution": a loose association.',
-  '"soft" (lenient) in "Law and courts": parents and teachers are soft too; it is not legal vocabulary.',
+  '"full" (holding as much as possible) in "Holidays and accommodation": a general word that can turn up in any scene.',
+  '"stop" (cease functioning) in "Cars and roads": anything can stop working; the meaning is not about cars.',
+  '"poor" (of low quality) in "Shopping": a general judgement word; "Describing things" holds it.',
+  '"event" in "TV, radio and news": a general noun the news uses like every other subject.',
+  '"comfort" in "Houses and homes": a loose association.',
+  '"go" (attend an activity) in "Religion and festivals": the topic fits going to church, not this general sense.',
+  '"soft" (lenient) in "Law and justice": parents and teachers are soft too; "Personal qualities" holds it.',
+  '"menu" in the category "Food and drink": its topic "Cooking and eating" holds it.',
 ]
 
 /**
- * The topic rubric asks for core vocabulary, not a scene the sense can turn up in. An audit of 100
- * published topic tags found about 15 loose ones ("full" in hotels, "stop" in driving) while
- * review rejected 1.5% of them; Jev passed such loose associations, so the LLM judges alone.
+ * A tag says what subject the sense's meaning belongs to, never a scene it can turn up in: the
+ * taxonomy is one of subjects, and scenes are a resource of their own. An audit of the scene-style
+ * rubric found loose tags ("full" in hotels, "stop" in driving) and general words with nowhere to
+ * go.
  */
 function topicRubric(sense: SubjectViews['sense'] & GlossedSense, topic: TopicView): string {
   return [
-    "Should a learner's dictionary tag this English word sense with this topic, so that learners studying the topic find it?",
+    "Should a learner's dictionary tag this English word sense with this topic, the subject its meaning belongs to?",
     `Sense: ${describe(sense)}.`,
     `Topic: ${describeTopic(topic)}.`,
     'Read the word only in the sense given, never in another sense.',
-    'pass only when this topic is where a learner characteristically meets or needs this sense: the sense is typical vocabulary of that scene or subject area, a word a learner studying the topic should learn. The topic may be a scene (at the hospital) or a subject area (emotions, colours and shapes). For example:',
+    `pass only when the meaning of this sense belongs to this subject: the sense names a thing, action, quality, or idea of it. A specialized sense of a general word passes in the subject it is specialized for. ${CATEGORY_RULE} For example:`,
     ...TOPIC_PASSES.map((example) => `- ${example}`),
-    'fail when the sense is general-purpose, usable in many scenes, and merely can appear in this one; when the link is only a loose association; or when the topic fits a different sense of the word, not this one. For example:',
+    'fail when the sense is general-purpose and its meaning belongs to no one subject; when the link is only a scene the sense can turn up in or a loose association; when another topic of the taxonomy holds the meaning more precisely; or when the topic fits a different sense of the word, not this one. For example:',
     ...TOPIC_FAILS.map((example) => `- ${example}`),
-    'A sense may be core vocabulary of several topics ("ticket" in trains and in buses); judge only this one.',
-    'uncertain: only when you cannot judge the sense or the topic at all. If you doubt whether the sense is typical vocabulary of the topic, fail.',
+    'A sense may belong to several subjects ("ticket" in buses and trains and in air travel); judge only this one.',
+    'uncertain: only when you cannot judge the sense or the topic at all. If you doubt whether the meaning belongs to the subject, fail.',
     listSenses('Other senses of this entry, for reference', sense.siblings),
   ].join('\n')
 }
+
+/** When a category, rather than one of its topics, is the right tag. */
+const CATEGORY_RULE =
+  'A category is right only when the meaning belongs to the category and none of its topics holds it ("travel" meaning go from place to place in "Travel and transport").'
 
 /** Topics tag the senses of content words; function words belong to no topic. */
 const TAGGABLE_POS: readonly Pos[] = ['noun', 'verb', 'adjective', 'adverb']
@@ -1785,7 +1792,7 @@ const RELATION_LIMITS = [
 ]
 
 const TOPIC_LIMITS = [
-  `A topic fact names a leaf topic of the taxonomy (GET /v1/topics) on a ${TAGGABLE_POS.join(', ')} sense; a sense holds at most ${MAX_TOPICS_PER_SENSE} live topics.`,
+  `A topic fact names a topic of the taxonomy (GET /v1/topics), or a category when none of its topics holds the sense, on a ${TAGGABLE_POS.join(', ')} sense; a sense holds at most ${MAX_TOPICS_PER_SENSE} live topics.`,
 ]
 
 const GRAMMAR_LIMITS = [
@@ -2081,8 +2088,7 @@ function planCefr({ level }: FactPayloads['cefr'], { subject }: ReviewContext<'e
 }
 
 /** The topic rule in the words Jev and luna fail loose tags with. */
-const TOPIC_RULE =
-  'pass only when this topic is where a learner characteristically meets or needs this sense: the sense is core vocabulary of the topic, a word a learner studying the topic should learn. Answer no when the sense is general-purpose and merely can appear in this topic ("full" in hotels, "stop" meaning cease functioning in driving), when the link is only a loose association, or when the topic fits a different sense of the word.'
+const TOPIC_RULE = `pass only when the meaning of this sense belongs to this subject: the sense names a thing, action, quality, or idea of it ("apple" in Food, "first" meaning the lowest gear in Cars and roads). ${CATEGORY_RULE} Answer no when the sense is general-purpose and its meaning belongs to no one subject ("full" meaning holding as much as possible in Holidays, "stop" meaning cease functioning in Cars and roads), when the link is only a scene the sense can turn up in or a loose association, when another topic holds the meaning more precisely, or when the topic fits a different sense of the word.`
 
 const MEANING_RULE =
   "pass only when the gloss states the saying's actual meaning, not the literal meaning of its words, and when it is said, in dictionary style. Answer no for a literal paraphrase, a wrong meaning, or a gloss that quotes the saying itself."
@@ -2227,11 +2233,11 @@ export const factKinds: { [K in FactKind]: KindSpec<K> } = {
     // Jev and luna each missed a few loose tags the other caught; their mean passed none.
     plan: (_payload, { subject, topic }) =>
       withGloss(subject, (sense) =>
-        withTopic(topic, (leaf) =>
+        withTopic(topic, (named) =>
           decide(
-            { ...senseState({ ...subject, ...sense }), topic: describeTopic(leaf) },
-            { topic: topicQuestion(sense, leaf) },
-            topicRubric({ ...subject, ...sense }, leaf),
+            { ...senseState({ ...subject, ...sense }), topic: describeTopic(named) },
+            { topic: topicQuestion(sense, named) },
+            topicRubric({ ...subject, ...sense }, named),
             { models: ['jev', 'luna'], combine: 'mean' },
           ),
         ),

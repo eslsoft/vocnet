@@ -28,7 +28,6 @@ import { canApply, factTransitions, isLive } from '@server/domain/fact-lifecycle
 import { currentInventory, inventorySenses } from '@server/domain/inventory'
 import { mayActOn, mayCurate, type Principal, principalRef } from '@server/domain/principal'
 import { type Lemma, normalizeTerm, textKey } from '@server/domain/term'
-import { isLeaf } from '@server/domain/topics'
 import type {
   EntryId,
   FactId,
@@ -233,12 +232,9 @@ async function createNamed<K extends FactKind>(
   return resolveNames(deps, kind, submitted, known)
 }
 
-async function assertLeafTopic(deps: Pick<Deps, 'topics'>, id: TopicId): Promise<void> {
+async function assertTopic(deps: Pick<Deps, 'topics'>, id: TopicId): Promise<void> {
   const topic = await deps.topics.find(id)
   if (!topic) throw new InvalidReferenceError(`Topic ${id} does not exist; GET /v1/topics lists the taxonomy.`)
-  if (!isLeaf(topic)) {
-    throw new InvalidReferenceError(`${id} is a topic category; tag the sense with one of its leaf topics.`)
-  }
 }
 
 const UNDER_CORRECTION = 'A live correction supersedes this fact; review that correction instead.'
@@ -293,7 +289,7 @@ export async function submitFact(
     )
   }
   const topic = topicOf(kind, payload)
-  if (topic) await assertLeafTopic(deps, topic)
+  if (topic) await assertTopic(deps, topic)
   const picture = mediaOf(kind, payload)
   if (picture && !(await deps.media.has(picture))) {
     throw new InvalidReferenceError(`Picture ${picture} is not stored; upload it with POST /manage/v1/media first.`)
