@@ -1,6 +1,7 @@
 import { applyD1Migrations, env, reset } from 'cloudflare:test'
 import {
   publicEntryIdsSql,
+  pushEntrySql,
   type ReplicaSource,
   readManifestSql,
   replicaManifestSql,
@@ -130,5 +131,31 @@ describe('public replica', () => {
 
     expect(await read(['/v1/entries/bank', '/v1/forms/bankes', '/v1/entries/shore'])).toEqual(changed)
     expect(await replicaManifest()).toEqual(second.fingerprints)
+  })
+
+  it('pushes an entry whose view row is longer than one statement allows [spec: replica/long-row]', async () => {
+    const { bank } = await seed()
+    const unit = await source.unit(bank.entryId)
+    const [row] = unit.rows.public_entries
+    const document = JSON.parse(String(row?.document))
+    // Quotes, multi-byte text, and an astral character, so the parts split on code points and escape.
+    document.padding = "it's 词典 🍎 ".repeat(12_000)
+    const long = { ...row, document: JSON.stringify(document) }
+    expect(new TextEncoder().encode(long.document).length).toBeGreaterThan(200_000)
+    const statements = pushEntrySql(
+      { ...unit, rows: { ...unit.rows, public_entries: [long] } },
+      'f',
+      '2026-11-19T00:00:00.000Z',
+    )
+    expect(Math.max(...statements.map((statement) => new TextEncoder().encode(statement).length))).toBeLessThan(100_000)
+
+    await emptyReplica()
+    await apply(statements)
+
+    const stored = await env.DB.prepare('SELECT document FROM public_entries WHERE entry_id = ?')
+      .bind(bank.entryId)
+      .first()
+    expect(stored?.document).toBe(long.document)
+    expect((await call('/v1/entries/bank')).status).toBe(200)
   })
 })
