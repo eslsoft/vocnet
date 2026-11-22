@@ -184,13 +184,13 @@ WHERE `facts`.`kind` = 'topic' AND `facts`.`status` IN ('pending', 'published') 
 --> statement-breakpoint
 -- 4. The other live tags name their new topic and return to pending; the old review stays as the
 --    record of the old verdict until the new review replaces it. The timestamps predate the
---    reconcile cutoff, so its next runs enqueue them.
+--    reconcile cutoff (an hour), so its next runs enqueue them.
 UPDATE `facts` SET
 	`payload` = json_set(`payload`, '$.topic_id', (SELECT `new_id` FROM `_topic_remap` WHERE `old_id` = json_extract(`facts`.`payload`, '$.topic_id'))),
 	`content_key` = (SELECT `new_id` FROM `_topic_remap` WHERE `old_id` = json_extract(`facts`.`payload`, '$.topic_id')),
 	`status` = 'pending',
 	`review_enqueued_at` = NULL,
-	`updated_at` = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-10 minutes')
+	`updated_at` = strftime('%Y-%m-%dT%H:%M:%fZ', 'now', '-2 hours')
 WHERE `facts`.`kind` = 'topic' AND `facts`.`status` IN ('pending', 'published');
 --> statement-breakpoint
 -- 5. The topics slot is worked again against the new taxonomy: its passes go, and its work items
