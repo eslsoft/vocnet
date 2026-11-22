@@ -1,5 +1,6 @@
 import type { ReviewMeta } from '@shared/catalog'
 import type { EntryId, FactId, SenseId, SentenceId, TopicId } from '@shared/facts'
+import type { MediaId } from '@shared/media'
 import { describe, expect, it } from 'vitest'
 import type { StoredEntry, StoredMeaning, StoredSense, StoredSummary } from './catalog-view'
 import {
@@ -19,14 +20,17 @@ import {
   UNRANKED,
 } from './public-view'
 
+/** The base the tests' media URLs are composed under. */
+const media = 'https://media.test'
+
 /** The taxonomy of these tests: every topic is a leaf of one category. */
 const categories: TopicCategories = new Map(
   ['finance', 'places'].map((id) => [id as TopicId, { id: 'society' as TopicId, name: { en: 'Society', zh: '社会' } }]),
 )
 const entryOf = (document: StoredEntry, links: EntryLinks, variant: ReadVariant) =>
-  shapeEntry(document, links, variant, categories)
+  shapeEntry(document, links, media, variant, categories)
 const senseDetailOf = (document: StoredEntry, senseId: SenseId, variant: ReadVariant) =>
-  shapeSenseDetail(document, senseId, variant, categories)
+  shapeSenseDetail(document, senseId, media, variant, categories)
 
 const review = (id: string): ReviewMeta => ({ fact_id: id as FactId, confidence: 0.9, verdict: 'pass' })
 const entryId = 'e0000000-0000-4000-8000-000000000001' as EntryId
@@ -82,7 +86,7 @@ const summary: StoredSummary = {
   cefr_source: 'reference',
   gloss: 'Gloss of s1.',
   translations: { zh: '银行' },
-  image_url: null,
+  image_id: null,
 }
 
 const bank: StoredEntry = {
@@ -156,7 +160,7 @@ const links: EntryLinks = {
       cefr_source: null,
       gloss: 'To rely on.',
       translations: { zh: '指望' },
-      image_url: null,
+      image_id: null,
     },
     {
       lemma: 'bank account',
@@ -165,7 +169,7 @@ const links: EntryLinks = {
       cefr_source: null,
       gloss: 'An account.',
       translations: {},
-      image_url: null,
+      image_id: null,
     },
     {
       lemma: 'break the bank',
@@ -174,7 +178,7 @@ const links: EntryLinks = {
       cefr_source: null,
       gloss: 'To cost too much.',
       translations: {},
-      image_url: null,
+      image_id: null,
     },
     {
       lemma: 'at the bank',
@@ -183,7 +187,7 @@ const links: EntryLinks = {
       cefr_source: null,
       gloss: 'In a bank.',
       translations: {},
-      image_url: null,
+      image_id: null,
     },
   ],
   family: [
@@ -194,7 +198,7 @@ const links: EntryLinks = {
       cefr_source: 'reference',
       gloss: 'One who banks.',
       translations: {},
-      image_url: null,
+      image_id: null,
     },
   ],
   publicParts: ['bank'],
@@ -251,7 +255,7 @@ describe('public view records', () => {
           cefr_source: 'reference',
           gloss: 'Gloss of s1.',
           translations: { zh: '银行', 'zh-Hant': '銀行', fr: 'banque' },
-          image_url: null,
+          image_id: null,
         },
       },
       expect.objectContaining({ topicId: 'places' }),
@@ -536,7 +540,9 @@ describe('public read variants', () => {
       ['finance', { id: 'money', name: { en: 'money en', zh: 'money zh' } }],
     ])
     // A tag whose topic the taxonomy lacks is broken data: the read fails, it does not show the tag bare.
-    expect(() => shapeEntry(bank, links, none, new Map())).toThrow('Topic finance is not a leaf of the taxonomy.')
+    expect(() => shapeEntry(bank, links, media, none, new Map())).toThrow(
+      'Topic finance is not a leaf of the taxonomy.',
+    )
   })
 
   it('cuts an overview: pronunciations, and per part of speech the count and first senses [spec: public-view/overviews]', () => {
@@ -573,7 +579,7 @@ describe('public read variants', () => {
   })
 
   it('summarizes entries, senses, and form matches in the requested language [spec: catalog/summary]', () => {
-    expect(shapeSummary(summary, none)).toEqual({
+    expect(shapeSummary(summary, media, none)).toEqual({
       lemma: 'bank',
       pos: ['noun', 'verb'],
       cefr: 'A2',
@@ -581,9 +587,9 @@ describe('public read variants', () => {
       gloss: 'Gloss of s1.',
       image_url: null,
     })
-    expect(shapeSummary(summary, { lang: 'zh', review: true }).translation).toBe('银行')
-    expect(shapeSummary(summary, { lang: 'all', review: false })).not.toHaveProperty('translation')
-    expect(shapeSummary(summary, { lang: 'fr', review: false })).not.toHaveProperty('translation')
+    expect(shapeSummary(summary, media, { lang: 'zh', review: true }).translation).toBe('银行')
+    expect(shapeSummary(summary, media, { lang: 'all', review: false })).not.toHaveProperty('translation')
+    expect(shapeSummary(summary, media, { lang: 'fr', review: false })).not.toHaveProperty('translation')
 
     const sense = {
       lemma: 'bank',
@@ -593,9 +599,9 @@ describe('public read variants', () => {
       cefr_source: null,
       gloss: 'Land.',
       translations: { zh: '岸' },
-      image_url: '/v1/media/abc',
+      image_id: 'a'.repeat(64) as MediaId,
     }
-    expect(shapeSenseSummary(sense, { lang: 'zh', review: false })).toEqual({
+    expect(shapeSenseSummary(sense, media, { lang: 'zh', review: false })).toEqual({
       lemma: 'bank',
       sense_id: 's1',
       pos: 'noun',
@@ -603,9 +609,9 @@ describe('public read variants', () => {
       cefr_source: null,
       gloss: 'Land.',
       translation: '岸',
-      image_url: '/v1/media/abc',
+      image_url: `${media}/${'a'.repeat(64)}`,
     })
-    expect(shapeSenseSummary(sense, none)).not.toHaveProperty('translation')
+    expect(shapeSenseSummary(sense, media, none)).not.toHaveProperty('translation')
 
     const records = { ...summary, lemma: 'record' }
     expect(
@@ -615,17 +621,18 @@ describe('public read variants', () => {
           { summary: records, type: 'third_person_singular', pos: 'verb' },
           { summary, type: 'variant', pos: null },
         ],
+        media,
         none,
       ),
     ).toEqual([
       {
-        ...shapeSummary(records, none),
+        ...shapeSummary(records, media, none),
         matches: [
           { type: 'plural', pos: 'noun' },
           { type: 'third_person_singular', pos: 'verb' },
         ],
       },
-      { ...shapeSummary(summary, none), matches: [{ type: 'variant' }] },
+      { ...shapeSummary(summary, media, none), matches: [{ type: 'variant' }] },
     ])
   })
 })
@@ -653,5 +660,24 @@ describe('public sentences', () => {
     })
     expect(shapeSentence(record, { lang: 'all', review: false }).translation).toEqual({ zh: '别指望运气。' })
     expect(shapeSentence(record, none)).not.toHaveProperty('translation')
+  })
+
+  it('composes picture URLs from the media base a read is given, and none without a picture [spec: media/base-url-shape]', () => {
+    const imageId = 'b'.repeat(64) as MediaId
+    const picture = { image_id: imageId, sentence: null, review: review('i1') }
+    const senses = bank.meanings.map((meaning) => ({
+      ...meaning,
+      senses: meaning.senses.map((sense) => (sense.id === 's1' ? { ...sense, image: picture } : sense)),
+    }))
+    const pictured = { ...bank, meanings: senses, image: { ...picture, sense_id: 's1' as SenseId } }
+    const url = `${media}/${imageId}`
+    const shown = entryOf(pictured, links, none)
+    expect(shown.image).toEqual({ url, sentence: null, sense_id: 's1' })
+    expect(shown.meanings[0]?.senses[0]?.image).toEqual({ url, sentence: null })
+    expect(shown.meanings[0]?.senses[1]?.image).toBeNull()
+    expect(entryOf(pictured, links, { lang: null, review: true }).image?.review).toEqual(review('i1'))
+    expect(shapeEntry(pictured, links, '/v1/media', none, categories).image?.url).toBe(`/v1/media/${imageId}`)
+    expect(shapeSummary({ ...summary, image_id: imageId }, media, none).image_url).toBe(url)
+    expect(shapeSummary(summary, media, none).image_url).toBeNull()
   })
 })

@@ -121,6 +121,7 @@ export default defineConfig({
               },
               bindings: {
                 ADMIN_SUBJECTS: 'admin-1, admin-2',
+                MEDIA_BASE_URL: 'https://media.test',
                 MODEL_BASE_URL: 'https://models.test',
                 MODEL_API_KEY: 'test-model-key',
                 JEV_MODEL: 'jev-latest',

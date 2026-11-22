@@ -3,6 +3,7 @@ import type {
   FormMatch,
   PublicEntry,
   PublicPhrases,
+  PublicPicture,
   PublicSense,
   PublicSenseDetail,
   PublicSentence,
@@ -12,11 +13,13 @@ import type {
   WordSummary,
 } from '@shared/catalog'
 import type { FormType, MorphemeRole, Pos, RelationDomain, SenseId, TopicId } from '@shared/facts'
+import { type MediaId, mediaUrl } from '@shared/media'
 import { type CefrLevel, cefrLevelSchema } from '@shared/reference'
 import {
   type ByLanguage,
   firstOfEach,
   type StoredEntry,
+  type StoredPicture,
   type StoredSense,
   type StoredSenseSummary,
   type StoredSummary,
@@ -136,7 +139,7 @@ const senseSummaryOf = (
   cefr_source: meaning.cefr === null ? null : document.cefr_source,
   gloss: sense.gloss,
   translations: firstOfEach(sense.translations),
-  image_url: sense.image?.url ?? null,
+  image_id: sense.image?.image_id ?? null,
 })
 
 export function publicViewRecord(document: StoredEntry): PublicViewRecord {
@@ -220,7 +223,15 @@ function withReview<T extends { review?: ReviewMeta }>(item: T, variant: ReadVar
   return { ...(rest as T), ...reviewed(review ?? null, variant) }
 }
 
-export function shapeSummary(summary: StoredSummary, variant: ReadVariant): WordSummary {
+/** The URL of an optional stored picture id under the media base the read is configured with. */
+const imageUrlOf = (media: string, imageId: MediaId | null) => (imageId === null ? null : mediaUrl(media, imageId))
+
+/** A stored picture as a read shows it: its URL under the media base, in place of the id. */
+function shapePicture({ image_id, ...picture }: StoredPicture, media: string, variant: ReadVariant): PublicPicture {
+  return withReview({ ...picture, url: mediaUrl(media, image_id) }, variant)
+}
+
+export function shapeSummary(summary: StoredSummary, media: string, variant: ReadVariant): WordSummary {
   const translation = translationIn(summary.translations, variant.lang)
   return {
     lemma: summary.lemma,
@@ -229,11 +240,11 @@ export function shapeSummary(summary: StoredSummary, variant: ReadVariant): Word
     cefr_source: summary.cefr_source,
     gloss: summary.gloss,
     ...(translation === undefined ? {} : { translation }),
-    image_url: summary.image_url,
+    image_url: imageUrlOf(media, summary.image_id),
   }
 }
 
-export function shapeSenseSummary(summary: StoredSenseSummary, variant: ReadVariant): SenseSummary {
+export function shapeSenseSummary(summary: StoredSenseSummary, media: string, variant: ReadVariant): SenseSummary {
   const translation = translationIn(summary.translations, variant.lang)
   return {
     lemma: summary.lemma,
@@ -243,7 +254,7 @@ export function shapeSenseSummary(summary: StoredSenseSummary, variant: ReadVari
     cefr_source: summary.cefr_source,
     gloss: summary.gloss,
     ...(translation === undefined ? {} : { translation }),
-    image_url: summary.image_url,
+    image_url: imageUrlOf(media, summary.image_id),
   }
 }
 
@@ -254,7 +265,7 @@ function categoryOf(topicId: TopicId, categories: TopicCategories, lang: string 
   return { id: category.id, name: nameIn(category.name, lang) }
 }
 
-function shapeSense(sense: StoredSense, variant: ReadVariant, categories: TopicCategories): PublicSense {
+function shapeSense(sense: StoredSense, media: string, variant: ReadVariant, categories: TopicCategories): PublicSense {
   const translations = translationsIn(sense.translations, variant.lang)
   const translationReviews = translationsIn(sense.review.translations, variant.lang)
   const relations = Object.fromEntries(
@@ -285,7 +296,7 @@ function shapeSense(sense: StoredSense, variant: ReadVariant, categories: TopicC
       category: categoryOf(topic.id, categories, variant.lang),
       ...reviewed(topic.review, variant),
     })),
-    image: sense.image && withReview(sense.image, variant),
+    image: sense.image && shapePicture(sense.image, media, variant),
     relations,
     ...(variant.review
       ? {
@@ -302,11 +313,16 @@ function shapeSense(sense: StoredSense, variant: ReadVariant, categories: TopicC
  * The headword's phrases as a read shows them: each public phrase entry in list order, under the
  * sense it is filed under, else by its type; then the sayings.
  */
-function shapePhrases(document: StoredEntry, summaries: readonly StoredSummary[], variant: ReadVariant): PublicPhrases {
+function shapePhrases(
+  document: StoredEntry,
+  summaries: readonly StoredSummary[],
+  media: string,
+  variant: ReadVariant,
+): PublicPhrases {
   const byLemma = new Map(summaries.map((summary) => [summary.lemma, summary]))
   const listed = document.phrases.flatMap((phrase) => {
     const summary = byLemma.get(phrase.lemma)
-    return summary ? [{ ...phrase, summary: shapeSummary(summary, variant) }] : []
+    return summary ? [{ ...phrase, summary: shapeSummary(summary, media, variant) }] : []
   })
   const senseOrder = document.meanings.flatMap((meaning) => meaning.senses.map((sense) => sense.id))
   const unfiled = listed.filter((phrase) => phrase.sense_id === null || !senseOrder.includes(phrase.sense_id))
@@ -331,11 +347,12 @@ function shapePhrases(document: StoredEntry, summaries: readonly StoredSummary[]
 export function shapeEntry(
   document: StoredEntry,
   links: EntryLinks,
+  media: string,
   variant: ReadVariant,
   categories: TopicCategories,
 ): PublicEntry {
   const publicParts = new Set(links.publicParts)
-  const summaries = (items: StoredSummary[]) => items.map((item) => shapeSummary(item, variant))
+  const summaries = (items: StoredSummary[]) => items.map((item) => shapeSummary(item, media, variant))
   return {
     lang: variant.lang,
     id: document.id,
@@ -355,7 +372,7 @@ export function shapeEntry(
       family: summaries(links.family),
       ...reviewed(document.morphology.review, variant),
     },
-    image: document.image && withReview(document.image, variant),
+    image: document.image && { ...shapePicture(document.image, media, variant), sense_id: document.image.sense_id },
     meanings: document.meanings.map((meaning) => ({
       pos: meaning.pos,
       cefr: meaning.cefr,
@@ -363,11 +380,11 @@ export function shapeEntry(
       skills: meaning.skills,
       pronunciations: meaning.pronunciations.map((item) => withReview(item, variant)),
       forms: meaning.forms,
-      senses: meaning.senses.map((sense) => shapeSense(sense, variant, categories)),
+      senses: meaning.senses.map((sense) => shapeSense(sense, media, variant, categories)),
       ...(variant.review ? { review: meaning.review } : {}),
     })),
     phrase_type: document.phrase_type,
-    phrases: shapePhrases(document, links.phrases, variant),
+    phrases: shapePhrases(document, links.phrases, media, variant),
     ...(variant.review ? { review: document.review } : {}),
   }
 }
@@ -376,6 +393,7 @@ export function shapeEntry(
 export function shapeSenseDetail(
   document: StoredEntry,
   senseId: SenseId,
+  media: string,
   variant: ReadVariant,
   categories: TopicCategories,
 ): PublicSenseDetail | null {
@@ -384,9 +402,9 @@ export function shapeSenseDetail(
     if (sense) {
       return {
         lang: variant.lang,
-        ...shapeSense(sense, variant, categories),
+        ...shapeSense(sense, media, variant, categories),
         pos: meaning.pos,
-        entry: shapeSummary(document.summary, variant),
+        entry: shapeSummary(document.summary, media, variant),
       }
     }
   }
@@ -431,11 +449,12 @@ export function shapeOverview(document: StoredEntry, senses: number, variant: Re
 /** The entries a form lookup found, one item per entry with every form of it that matched, in row order. */
 export function formMatches(
   rows: ReadonlyArray<{ summary: StoredSummary; type: FormType; pos: Pos | null }>,
+  media: string,
   variant: ReadVariant,
 ): FormMatch[] {
   const byLemma = new Map<string, FormMatch>()
   for (const row of rows) {
-    const match = byLemma.get(row.summary.lemma) ?? { ...shapeSummary(row.summary, variant), matches: [] }
+    const match = byLemma.get(row.summary.lemma) ?? { ...shapeSummary(row.summary, media, variant), matches: [] }
     match.matches.push({ type: row.type, ...(row.pos ? { pos: row.pos } : {}) })
     byLemma.set(row.summary.lemma, match)
   }

@@ -43,7 +43,7 @@ describe('pictures', () => {
     const bytes = webpHeader(1024, 1024)
     const stored = await storePicture(world.deps, bytes)
     expect(stored.id).toMatch(/^[0-9a-f]{64}$/)
-    expect(stored.url).toBe(`/v1/media/${stored.id}`)
+    expect(stored.url).toBe(`https://media.test/${stored.id}`)
     expect(await storePicture(world.deps, bytes)).toEqual(stored)
     expect(world.media.size).toBe(1)
     await expect(storePicture(world.deps, webpHeader(512, 512))).rejects.toMatchObject({

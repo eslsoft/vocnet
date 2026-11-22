@@ -26,7 +26,7 @@ import type {
   TopicId,
 } from '@shared/facts'
 import { CURATOR } from '@shared/facts'
-import { mediaUrl } from '@shared/media'
+import type { MediaId } from '@shared/media'
 import type { CefrLevel, LemmaReference } from '@shared/reference'
 import { type Fact, type FactOf, isKind } from './fact'
 import { formMeaning, isIrregularForm, type NamedNodes } from './fact-kinds'
@@ -131,7 +131,8 @@ export type ByLanguage<T> = Record<string, T>
 
 /** A published picture as the document stores it, with the review of its image fact. */
 export interface StoredPicture {
-  url: string
+  /** The media id; a read composes the URL from the configured base. */
+  image_id: MediaId
   sentence: string | null
   review: ReviewMeta
 }
@@ -164,7 +165,8 @@ export interface StoredSummary {
   cefr_source: CefrSource | null
   gloss: string | null
   translations: ByLanguage<string>
-  image_url: string | null
+  /** The media id of its picture; a read composes the URL from the configured base. */
+  image_id: MediaId | null
 }
 
 /** One sense as topic listings show it. */
@@ -176,7 +178,8 @@ export interface StoredSenseSummary {
   cefr_source: CefrSource | null
   gloss: string
   translations: ByLanguage<string>
-  image_url: string | null
+  /** The media id of its picture; a read composes the URL from the configured base. */
+  image_id: MediaId | null
 }
 
 /** One published form of a public entry as the form lookup indexes it, shown or not. */
@@ -366,7 +369,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       if (!example || text === undefined) return null
       sentence = text
     }
-    return { url: mediaUrl(image_id), sentence, review: reviewOf(fact) }
+    return { image_id, sentence, review: reviewOf(fact) }
   }
 
   const storedSense = (sense: StoredInventorySense): StoredSense => {
@@ -545,7 +548,7 @@ export function projectPublicEntry(snapshot: EntrySnapshot, context: ProjectionC
       cefr_source: cefrSource,
       gloss: first?.gloss ?? null,
       translations: first ? firstOfEach(first.translations) : {},
-      image_url: image?.url ?? null,
+      image_id: image?.image_id ?? null,
     },
     phrases: storedPhrases,
     sayings,

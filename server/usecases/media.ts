@@ -16,12 +16,12 @@ export async function readMedia(deps: Pick<Deps, 'media'>, id: MediaId): Promise
  * not one (`pictureProblem`). Storing the same picture again changes nothing.
  */
 export async function storePicture(
-  deps: Pick<Deps, 'media'>,
+  deps: Pick<Deps, 'media' | 'mediaBaseUrl'>,
   bytes: Uint8Array<ArrayBuffer>,
 ): Promise<PictureUploadResult> {
   const problem = pictureProblem(bytes)
   if (problem) throw new InvalidRequestError(problem)
   const id = await mediaIdOf(bytes)
   await deps.media.put(id, bytes, WEBP)
-  return { id, url: mediaUrl(id) }
+  return { id, url: mediaUrl(deps.mediaBaseUrl, id) }
 }

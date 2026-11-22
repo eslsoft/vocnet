@@ -760,6 +760,19 @@ Feature: Facts and review
     And a replica sync lists the picture among the files it copies
     And a wrong-sized picture is 400 and an image fact naming a picture that is not stored is 422
 
+  @media/base-url @api
+  Scenario: A picture's URL is composed from the configured base, never stored
+    Given a sense with a published image fact and a published topic tag, and a topic with a picture
+    When the entry, the topic's senses, and the taxonomy are read
+    Then each picture's url or image_url is `${MEDIA_BASE_URL}/<id>`
+    And the stored views and their summaries name the picture by id alone, with no path and no host
+
+  @media/base-url-shape @domain
+  Scenario: Reading shapes stored picture ids with the base it is given
+    Given stored entries and summaries that hold picture ids or none
+    When they are shaped for a read with a media base
+    Then each picture has `url` and each summary `image_url` under that base, and none when there is no picture
+
   @facts/cefr-review @domain
   Scenario: A level is estimated and judged by the same rule
     Given a word with common senses and a frequency

@@ -300,14 +300,14 @@ describe('topic pictures', () => {
     const set = await put(curator, 'dentist', picture)
     expect(set.status).toBe(200)
     const { image_url } = topicImageResultSchema.parse(set.body)
-    expect(image_url).toMatch(/^\/v1\/media\/[0-9a-f]{64}$/)
+    expect(image_url).toMatch(/^https:\/\/media\.test\/[0-9a-f]{64}$/)
     const { categories } = topicTreeSchema.parse((await call('/v1/topics')).body)
     const health = categories.find((category) => category.id === 'body-health')
     expect(health?.image_url).toBeNull()
     expect(health?.topics.find((topic) => topic.id === 'dentist')?.image_url).toBe(image_url)
 
-    const read = await request(image_url)
     const id = image_url.split('/').pop()
+    const read = await request(`/v1/media/${id}`)
     expect([read.status, read.headers.get('Content-Type'), read.headers.get('Cache-Control')]).toEqual([
       200,
       'image/webp',
@@ -317,7 +317,7 @@ describe('topic pictures', () => {
     expect(read.headers.get('Cross-Origin-Resource-Policy')).toBe('cross-origin')
     expect((await request('/v1/topics')).headers.get('Cross-Origin-Resource-Policy')).toBe('same-origin')
     expect(new Uint8Array(await read.arrayBuffer())).toEqual(picture)
-    const again = await request(image_url, { headers: { 'if-none-match': `"${id}"` } })
+    const again = await request(`/v1/media/${id}`, { headers: { 'if-none-match': `"${id}"` } })
     expect(again.status).toBe(304)
 
     const missing = await call(`/v1/media/${'0'.repeat(64)}`)
