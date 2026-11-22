@@ -35,6 +35,8 @@ export interface Deps {
   publicViews: PublicViewRepo
   /** Pictures and other media files, by the SHA-256 of their bytes. */
   media: MediaStore
+  /** What a media id is appended to for its public URL (`MEDIA_BASE_URL`): the bucket's domain, or this Worker's `/v1/media`. */
+  mediaBaseUrl: string
   /** The decision models: Jev and OpenAI's Decisions API (luna). */
   decision: DecisionReviewers
   llm: LlmReviewer

@@ -456,7 +456,7 @@ describe('public read model', () => {
       cefr_source: 'reference',
       gloss: 'land beside a river',
       translations: { zh: '河岸' },
-      image_url: null,
+      image_id: null,
     })
     expect(() => project({ ...snapshot, facts }, { topicNames: new Map() })).toThrow('does not exist')
   })
@@ -472,7 +472,7 @@ describe('public read model', () => {
       cefr_source: null,
       gloss: null,
       translations: {},
-      image_url: null,
+      image_id: null,
     })
   })
 

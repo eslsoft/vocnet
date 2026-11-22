@@ -169,7 +169,7 @@ export interface VersionedRead<T> {
  * entries supply joined in. Exact lemma only.
  */
 export async function getPublicEntry(
-  deps: ViewDeps,
+  deps: ViewDeps & Pick<Deps, 'mediaBaseUrl'>,
   lemma: string,
   variant: ReadVariant,
 ): Promise<VersionedRead<PublicEntry>> {
@@ -178,8 +178,8 @@ export async function getPublicEntry(
   const { view, links } = found
   const taxonomy = await taxonomyOf(deps)
   return {
-    versions: [view.digest, JSON.stringify(links), taxonomy.version],
-    read: () => shapeEntry(readStored<StoredEntry>(view.json), links, variant, taxonomy.categories),
+    versions: [view.digest, JSON.stringify(links), taxonomy.version, deps.mediaBaseUrl],
+    read: () => shapeEntry(readStored<StoredEntry>(view.json), links, deps.mediaBaseUrl, variant, taxonomy.categories),
   }
 }
 
@@ -194,15 +194,17 @@ async function taxonomyOf(deps: Pick<Deps, 'topics'>): Promise<{ categories: Top
 
 /** One public sense in the requested variant, with its entry's summary. */
 export async function getPublicSense(
-  deps: ViewDeps,
+  deps: ViewDeps & Pick<Deps, 'mediaBaseUrl'>,
   id: SenseId,
   variant: ReadVariant,
 ): Promise<VersionedRead<PublicSenseDetail>> {
   const found = await readPublicView(deps, () => deps.publicViews.findBySense(id))
   const taxonomy = await taxonomyOf(deps)
-  const sense = found && shapeSenseDetail(readStored<StoredEntry>(found.view.json), id, variant, taxonomy.categories)
+  const sense =
+    found &&
+    shapeSenseDetail(readStored<StoredEntry>(found.view.json), id, deps.mediaBaseUrl, variant, taxonomy.categories)
   if (!found || !sense) throw new NotFoundError(`Sense ${id} not found.`)
-  return { versions: [found.view.digest, taxonomy.version], read: () => sense }
+  return { versions: [found.view.digest, taxonomy.version, deps.mediaBaseUrl], read: () => sense }
 }
 
 /**
@@ -262,7 +264,7 @@ export async function getPublicSentence(
  * sense that is not public is not found.
  */
 export async function listSenseMembers(
-  deps: ViewDeps,
+  deps: ViewDeps & Pick<Deps, 'mediaBaseUrl'>,
   id: SenseId,
   domain: RelationDomain | null,
   page: PageRequest,
@@ -276,7 +278,7 @@ export async function listSenseMembers(
   return {
     ...members,
     items: members.items.map(({ summary, depth, parents }) => ({
-      ...shapeSenseSummary(summary, variant),
+      ...shapeSenseSummary(summary, deps.mediaBaseUrl, variant),
       depth,
       parents,
     })),
@@ -290,7 +292,7 @@ export async function listSenseMembers(
  * of each document found and by what is missing, so an unchanged answer revalidates without a body.
  */
 export async function listEntryOverviews(
-  deps: Pick<Deps, 'publicViews'>,
+  deps: Pick<Deps, 'publicViews' | 'mediaBaseUrl'>,
   lemmas: readonly string[],
   senses: number,
   variant: ReadVariant,
@@ -314,13 +316,16 @@ export async function listEntryOverviews(
  * matched. No fuzzy or lemma fallback: no match is not found.
  */
 export async function lookupForm(
-  deps: Pick<Deps, 'publicViews'>,
+  deps: Pick<Deps, 'publicViews' | 'mediaBaseUrl'>,
   form: string,
   variant: ReadVariant,
 ): Promise<VersionedRead<FormMatch[]>> {
   const rows = await deps.publicViews.findForms(normalizeTerm(form))
   if (rows.length === 0) throw new NotFoundError(`No entry has the form ${JSON.stringify(form)}.`)
-  return { versions: [...new Set(rows.map((row) => row.digest))], read: () => formMatches(rows, variant) }
+  return {
+    versions: [...new Set(rows.map((row) => row.digest)), deps.mediaBaseUrl],
+    read: () => formMatches(rows, deps.mediaBaseUrl, variant),
+  }
 }
 
 /** Which public entries a list shows; `topic` is a leaf topic or a category. */
@@ -336,7 +341,7 @@ export interface EntryListFilter {
  * a topic, a tagged sense) of the part of speech and levels asked. An unknown topic is not found.
  */
 export async function listPublicEntries(
-  deps: Pick<Deps, 'publicViews' | 'topics'>,
+  deps: Pick<Deps, 'publicViews' | 'topics' | 'mediaBaseUrl'>,
   filter: EntryListFilter,
   sort: EntrySort,
   page: PageRequest,
@@ -348,7 +353,7 @@ export async function listPublicEntries(
     sort,
     page,
   )
-  return { ...found, items: found.items.map((summary) => shapeSummary(summary, variant)) }
+  return { ...found, items: found.items.map((summary) => shapeSummary(summary, deps.mediaBaseUrl, variant)) }
 }
 
 /**
@@ -357,7 +362,7 @@ export async function listPublicEntries(
  * correction, stemming, or other fallback.
  */
 export async function searchPublicEntries(
-  deps: Pick<Deps, 'publicViews'>,
+  deps: Pick<Deps, 'publicViews' | 'mediaBaseUrl'>,
   text: string,
   page: PageRequest,
   variant: ReadVariant,
@@ -372,7 +377,10 @@ export async function searchPublicEntries(
     },
     page,
   )
-  return { ...found, items: found.items.map((row) => ({ ...shapeSummary(row.summary, variant), match: row.match })) }
+  return {
+    ...found,
+    items: found.items.map((row) => ({ ...shapeSummary(row.summary, deps.mediaBaseUrl, variant), match: row.match })),
+  }
 }
 
 /** Entries in lemma order, by lemma prefix, lowest CEFR level, a weak fact, or an item at the attempt bound. */

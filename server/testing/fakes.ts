@@ -883,6 +883,7 @@ export function fakeWorld(): FakeWorld {
   }
 
   const deps: Deps = {
+    mediaBaseUrl: 'https://media.test',
     nodes,
     tickets,
     work,

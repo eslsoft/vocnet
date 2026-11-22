@@ -31,11 +31,11 @@ const byPosition = (a: TopicNode, b: TopicNode) => a.position - b.position
 export type TopicCounts = ReadonlyMap<TopicId, { senses: number; entries: number }>
 
 /** Categories with their leaf topics, each in display order, with what each lists. */
-export function topicTree(nodes: readonly TopicNode[], counts: TopicCounts): TopicTree {
+export function topicTree(nodes: readonly TopicNode[], counts: TopicCounts, media: string): TopicTree {
   const name = (node: TopicNode) => ({
     id: node.id,
     name: { en: node.nameEn, zh: node.nameZh },
-    image_url: node.imageId === null ? null : mediaUrl(node.imageId),
+    image_url: node.imageId === null ? null : mediaUrl(media, node.imageId),
     sense_count: counts.get(node.id)?.senses ?? 0,
     entry_count: counts.get(node.id)?.entries ?? 0,
   })
@@ -55,9 +55,15 @@ export function topicTree(nodes: readonly TopicNode[], counts: TopicCounts): Top
 
 /** Every leaf topic with its category's name, in display order: categories, then their leaves. */
 export const leafViews = (nodes: readonly TopicNode[]): TopicView[] =>
-  topicTree(nodes, new Map()).categories.flatMap((category) =>
-    category.topics.map((topic) => ({ category: category.name.en, topic: topic.name.en })),
-  )
+  nodes
+    .filter((node) => !isLeaf(node))
+    .sort(byPosition)
+    .flatMap((category) =>
+      nodes
+        .filter((node) => node.parentId === category.id)
+        .sort(byPosition)
+        .map((leaf) => ({ category: category.nameEn, topic: leaf.nameEn })),
+    )
 
 /** The leaves a topic id selects: itself when it is a leaf, every topic of it when it is a category. */
 export function leavesUnder(topic: TopicNode, nodes: readonly TopicNode[]): TopicId[] {

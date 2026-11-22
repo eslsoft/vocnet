@@ -275,6 +275,8 @@ describe('public reads', () => {
       expect.any(String),
       JSON.stringify({ phrases: [], family: [], publicParts: [] }),
       expect.stringContaining('"hospital-doctor",{"id":"body-health"'),
+      // The media base, which the picture URLs in the body are composed under.
+      'https://media.test',
     ])
     expect(read.read()).toMatchObject({
       lang: null,
@@ -289,7 +291,7 @@ describe('public reads', () => {
   it('finds entries by an exact published form only [spec: catalog/form-lookup]', async () => {
     const { world } = await publishedBank()
     const found = await lookupForm(world.deps, 'banks', none)
-    expect(found.versions).toEqual([expect.any(String)])
+    expect(found.versions).toEqual([expect.any(String), 'https://media.test'])
     expect(found.read()).toEqual([
       {
         lemma: 'bank',
@@ -442,7 +444,7 @@ describe('public reads', () => {
     })
     await reviewAll(world)
     const found = await getPublicSense(world.deps, sense.id, zh)
-    expect(found.versions).toEqual([expect.any(String), expect.stringContaining('"body-health"')])
+    expect(found.versions).toEqual([expect.any(String), expect.stringContaining('"body-health"'), 'https://media.test'])
     expect(found.read()).toMatchObject({
       lang: 'zh',
       id: sense.id,

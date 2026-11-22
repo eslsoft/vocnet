@@ -2,7 +2,8 @@ import { env } from 'cloudflare:test'
 import { mediaIdsSql } from '@server/adapters/replica-sql'
 import { webpHeader } from '@server/testing/webp'
 import { entryPageSchema, publicEntrySchema } from '@shared/catalog'
-import { pictureUploadResultSchema } from '@shared/media'
+import { pictureUploadResultSchema, topicImageResultSchema } from '@shared/media'
+import { topicSensePageSchema, topicTreeSchema } from '@shared/topics'
 import { apiErrorSchema } from '@shared/types'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
@@ -30,7 +31,7 @@ describe('pictures', () => {
     const stored = await upload(token, picture)
     expect(stored.status).toBe(200)
     const { id, url } = pictureUploadResultSchema.parse(stored.body)
-    expect(url).toBe(`/v1/media/${id}`)
+    expect(url).toBe(`${env.MEDIA_BASE_URL}/${id}`)
     const wrong = await upload(token, webpHeader(1254, 1254))
     expect([wrong.status, apiErrorSchema.parse(wrong.body).error.code]).toEqual([400, 'invalid_request'])
     const unstored = await call('/manage/v1/facts', {
@@ -68,8 +69,49 @@ describe('pictures', () => {
     // A replica sync copies the picture before the entry that shows it.
     const named = await env.DB.prepare(mediaIdsSql).all<{ image_id: string }>()
     expect(named.results.map((row) => row.image_id)).toContain(id)
-    const served = await request(url)
+    const served = await request(`/v1/media/${id}`)
     expect([served.status, served.headers.get('content-type')]).toEqual([200, 'image/webp'])
     expect(new Uint8Array(await served.arrayBuffer())).toEqual(picture)
+  })
+
+  it("stores only a picture's id and composes its URL from MEDIA_BASE_URL on every read [spec: media/base-url]", async () => {
+    const token = await issueAgentKey()
+    const curator = await issueAgentKey('Curator', true)
+    const bank = await headword('bank', [{ pos: 'noun', gloss: 'An organization that keeps money for its customers.' }])
+    const sense = bank.senses[0] as string
+    const { id } = pictureUploadResultSchema.parse((await upload(token, webpHeader(1024, 1024))).body)
+    await submitOk(token, 'image', sense, { image_id: id })
+    await submitOk(token, 'topic', sense, { topic_id: 'hospital-doctor' })
+    stubReviewers({ guesses: ['bank'] })
+    await deliverPendingReviews()
+    vi.restoreAllMocks()
+    const url = `${env.MEDIA_BASE_URL}/${id}`
+    expect(env.MEDIA_BASE_URL).toBe('https://media.test')
+
+    const entry = publicEntrySchema.parse((await call('/v1/entries/bank')).body)
+    expect(entry.image?.url).toBe(url)
+    expect(entry.meanings[0]?.senses[0]?.image?.url).toBe(url)
+    const listed = topicSensePageSchema.parse((await call('/v1/topics/hospital-doctor/senses')).body)
+    expect(listed.items.map((item) => item.image_url)).toEqual([url])
+
+    const set = await call('/manage/v1/topics/dentist/image', {
+      method: 'PUT',
+      token: curator,
+      headers: { 'content-type': 'image/webp' },
+      body: webpHeader(1024, 1024),
+    })
+    expect(topicImageResultSchema.parse(set.body).image_url).toBe(url)
+    const { categories } = topicTreeSchema.parse((await call('/v1/topics')).body)
+    const dentist = categories.flatMap((category) => category.topics).find((topic) => topic.id === 'dentist')
+    expect(dentist?.image_url).toBe(url)
+
+    // The stored views name the picture by id alone: no path and no host.
+    const stored = await env.DB.prepare(
+      `SELECT document || summary AS body FROM public_entries
+       UNION ALL SELECT summary FROM public_sense_topics UNION ALL SELECT summary FROM public_hypernyms`,
+    ).all<{ body: string }>()
+    const text = stored.results.map((row) => row.body).join('\n')
+    expect(text).toContain(`"image_id":"${id}"`)
+    expect(text).not.toMatch(/\/v1\/media|media\.test|"image_url"|"url"/)
   })
 })

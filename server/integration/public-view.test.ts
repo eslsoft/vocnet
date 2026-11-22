@@ -309,10 +309,10 @@ describe('public view', () => {
       if (!live || !found) throw new Error(`${lemma} is not public.`)
       for (const [query, variant] of variants) {
         expect(await (await request(`/v1/entries/${lemma}${query}`)).json()).toEqual(
-          shapeEntry(live, found.links, variant, categories),
+          shapeEntry(live, found.links, env.MEDIA_BASE_URL, variant, categories),
         )
         expect(await (await request(`/v1/senses/${senseId}${query}`)).json()).toEqual(
-          shapeSenseDetail(live, senseId, variant, categories),
+          shapeSenseDetail(live, senseId, env.MEDIA_BASE_URL, variant, categories),
         )
       }
     }

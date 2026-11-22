@@ -24,11 +24,11 @@ describe('topic taxonomy', () => {
     const named = (id: string, senses = 0, entries = 0) => ({
       id,
       name: { en: `${id} en`, zh: `${id} zh` },
-      image_url: id === 'food' ? `/v1/media/${imageId}` : null,
+      image_url: id === 'food' ? `https://media.test/${imageId}` : null,
       sense_count: senses,
       entry_count: entries,
     })
-    expect(topicTree(nodes, counts)).toEqual({
+    expect(topicTree(nodes, counts, 'https://media.test')).toEqual({
       categories: [
         { ...named('home'), topics: [named('kitchen')] },
         { ...named('food', 5, 4), topics: [named('fruit', 3, 2), named('drinks')] },

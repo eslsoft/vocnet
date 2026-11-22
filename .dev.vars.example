@@ -21,3 +21,7 @@ REVIEW_LLM_MODEL=gpt-5-mini
 
 # OpenAI Decisions API (gpt-6-luna), a decision reviewer beside Jev; the gateway does not serve it.
 OPENAI_API_KEY=your-openai-api-key
+
+# Where a media id is read publicly, `${MEDIA_BASE_URL}/<id>`, with no trailing slash: `/v1/media`
+# serves it through the Worker from R2; production points at the bucket's own domain.
+MEDIA_BASE_URL=/v1/media

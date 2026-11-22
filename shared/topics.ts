@@ -13,7 +13,8 @@ const topicFields = {
     .object({ en: z.string(), zh: z.string() })
     .meta({ description: 'The name by language tag, as Sense.topics names a topic.' }),
   image_url: z.string().nullable().meta({
-    description: 'The path of its picture under this server, cacheable forever; null until a curator sets one.',
+    description:
+      'The URL of its picture under the configured media base, cacheable forever; null until a curator sets one.',
   }),
   sense_count: count.meta({
     description: 'How many public senses GET /v1/topics/{id}/senses lists for it; a category counts each sense once.',

@@ -260,16 +260,16 @@ describe('topic pictures', () => {
     const result = await setTopicImage(world.deps, curatorAgent, 'home' as TopicId, picture)
     const [id] = [...world.media.keys()]
     expect(id).toMatch(/^[0-9a-f]{64}$/)
-    expect(result).toEqual({ topic_id: 'home', image_url: `/v1/media/${id}` })
+    expect(result).toEqual({ topic_id: 'home', image_url: `https://media.test/${id}` })
     expect(world.media.get(id as string)).toEqual({ bytes: picture, contentType: 'image/webp' })
-    expect(await imageOf(world, 'home')).toBe(`/v1/media/${id}`)
+    expect(await imageOf(world, 'home')).toBe(`https://media.test/${id}`)
     expect(await imageOf(world, 'furniture')).toBeNull()
 
     // A leaf takes a picture as a category does; the same picture again changes nothing.
     await setTopicImage(world.deps, admin, 'furniture' as TopicId, picture)
     expect(await setTopicImage(world.deps, curatorAgent, 'home' as TopicId, picture)).toEqual(result)
     expect(world.media.size).toBe(1)
-    expect(await imageOf(world, 'furniture')).toBe(`/v1/media/${id}`)
+    expect(await imageOf(world, 'furniture')).toBe(`https://media.test/${id}`)
   })
 
   it('lets only a curator set a square WebP on a known topic, storing nothing otherwise [spec: topics/image-rules]', async () => {

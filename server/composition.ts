@@ -20,7 +20,7 @@ import { createJevReviewer } from '@server/adapters/reviewers/jev'
 import { createLlmReviewer } from '@server/adapters/reviewers/llm'
 import { createLunaReviewer } from '@server/adapters/reviewers/luna'
 import { systemClock, uuidGenerator } from '@server/adapters/system'
-import { getAdminSubjects, getAuthConfig, getReviewConfig } from '@server/config'
+import { getAdminSubjects, getAuthConfig, getMediaBaseUrl, getReviewConfig } from '@server/config'
 import { createDb } from '@server/db/client'
 import type { Env } from '@server/env'
 import type { Deps } from '@server/usecases/deps'
@@ -47,6 +47,7 @@ export function createDeps(env: Env): Deps {
     reference: createReferenceRepo(db),
     publicViews: createPublicViewRepo(db),
     media: createMediaStore(env.MEDIA),
+    mediaBaseUrl: getMediaBaseUrl(env),
     decision: {
       jev: { ask: (questions, state) => jevLimit(() => jev.ask(questions, state)) },
       luna: createLunaReviewer(review.decisions),

@@ -104,7 +104,7 @@ const summaryFields = {
   translation: summaryTranslationSchema.optional(),
   image_url: z.string().nullable().meta({
     description:
-      'The path of its picture (GET /v1/media/{id}), cacheable forever: the picture its document shows as `image`; null when none is public.',
+      'The URL of its picture (the media base and its id), cacheable forever: the picture its document shows as `image`; null when none is public.',
   }),
 }
 
@@ -272,7 +272,7 @@ export const publicExampleSchema = z
 export type PublicExample = z.infer<typeof publicExampleSchema>
 export const publicPictureSchema = z
   .object({
-    url: z.string().meta({ description: 'The path of the picture (GET /v1/media/{id}), cacheable forever.' }),
+    url: z.string().meta({ description: 'The URL of the picture (the media base and its id), cacheable forever.' }),
     sentence: z.string().nullable().meta({
       description:
         'The published example the picture shows, which is always shown with it; null when it shows the sense itself.',

@@ -26,6 +26,8 @@ JEV_CONCURRENCY = "10"
 REVIEW_LLM_CONCURRENCY = "8"
 DECISIONS_BASE_URL = "https://api.openai.com"
 DECISIONS_MODEL = "gpt-6-luna"
+# Pictures are read from the media bucket's own domain, without invoking the Worker.
+MEDIA_BASE_URL = "https://vocnet-images.tftt.cc"
 
 [[d1_databases]]
 binding = "DB"
@@ -99,6 +101,8 @@ JEV_CONCURRENCY = "10"
 REVIEW_LLM_CONCURRENCY = "8"
 DECISIONS_BASE_URL = "https://api.openai.com"
 DECISIONS_MODEL = "gpt-6-luna"
+# A preview has its own bucket, which only the Worker reads: it serves GET /v1/media/{id}.
+MEDIA_BASE_URL = "/v1/media"
 
 [[previews.d1_databases]]
 binding = "DB"

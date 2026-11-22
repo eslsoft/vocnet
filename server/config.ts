@@ -58,6 +58,22 @@ export function getAdminSubjects(env: AccessEnv): ReadonlySet<string> {
   )
 }
 
+export interface MediaEnv {
+  MEDIA_BASE_URL: string
+}
+
+// A media id is appended after a slash, so the base is an absolute URL or a path, never ending in one.
+const mediaConfigSchema = z.object({
+  MEDIA_BASE_URL: z
+    .string()
+    .regex(/^(https?:\/\/|\/)\S*[^/\s]$/, 'an absolute URL or a path, without a trailing slash'),
+})
+
+/** The base public media URLs are composed under: `${base}/${id}`. */
+export function getMediaBaseUrl(env: MediaEnv): string {
+  return parse(mediaConfigSchema, env, 'media').MEDIA_BASE_URL
+}
+
 export interface ReviewEnv {
   MODEL_BASE_URL: string
   MODEL_API_KEY: string

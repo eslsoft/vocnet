@@ -12,9 +12,13 @@ import { storePicture } from './media'
 import type { Page, PageRequest } from './ports'
 
 /** The taxonomy with how many public senses and entries each topic and category lists now. */
-export async function getTopicTree(deps: Pick<Deps, 'topics' | 'publicViews'>): Promise<TopicTree> {
+export async function getTopicTree(deps: Pick<Deps, 'topics' | 'publicViews' | 'mediaBaseUrl'>): Promise<TopicTree> {
   const [nodes, counts] = await Promise.all([deps.topics.list(), deps.publicViews.countTagged()])
-  return topicTree(nodes, new Map(counts.map(({ topicId, senses, entries }) => [topicId, { senses, entries }])))
+  return topicTree(
+    nodes,
+    new Map(counts.map(({ topicId, senses, entries }) => [topicId, { senses, entries }])),
+    deps.mediaBaseUrl,
+  )
 }
 
 /** The leaf topics a topic id stands for: itself, or a category's leaves. An unknown id is not found. */
@@ -30,7 +34,7 @@ export async function leavesOf(deps: Pick<Deps, 'topics'>, id: TopicId): Promise
  * or level. An id that names no topic is not found; there is no fuzzy fallback.
  */
 export async function listTopicSenses(
-  deps: Pick<Deps, 'topics' | 'publicViews'>,
+  deps: Pick<Deps, 'topics' | 'publicViews' | 'mediaBaseUrl'>,
   id: TopicId,
   sort: SenseSort,
   page: PageRequest,
@@ -39,7 +43,10 @@ export async function listTopicSenses(
   const found = await deps.publicViews.listTaggedSenses(await leavesOf(deps, id), sort, page)
   return {
     ...found,
-    items: found.items.map(({ summary, rare }) => ({ ...shapeSenseSummary(summary, variant), rare })),
+    items: found.items.map(({ summary, rare }) => ({
+      ...shapeSenseSummary(summary, deps.mediaBaseUrl, variant),
+      rare,
+    })),
   }
 }
 
@@ -49,7 +56,7 @@ export async function listTopicSenses(
  * picture again changes nothing.
  */
 export async function setTopicImage(
-  deps: Pick<Deps, 'topics' | 'media'>,
+  deps: Pick<Deps, 'topics' | 'media' | 'mediaBaseUrl'>,
   actor: Actor,
   id: TopicId,
   bytes: Uint8Array<ArrayBuffer>,
