@@ -13,7 +13,7 @@ Feature: Topics
     And otherwise the LLM decides, with the same context, a category shown with its topics
     And its rubric passes only a sense whose meaning belongs to the subject, a specialized sense of a general word in the subject it is specialized for, and a category only when none of its topics holds the sense
     And fails a general-purpose sense, a scene the sense can turn up in, a loose association, a topic another topic holds more precisely, or a topic that fits a different sense of the word
-    And it gives passes and fails as examples and says to fail when in doubt
+    And it gives passes and fails as examples, says where neighbouring topics meet, and says to fail when in doubt
     And a sense without a gloss or a topic the taxonomy lacks is unreviewable
 
   @topics/tag @usecase

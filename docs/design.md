@@ -695,9 +695,14 @@ category's topics. It fails a general-purpose sense, a scene the sense can turn
 up in ("full" in "Holidays and accommodation"), a loose association, a topic
 another topic holds more precisely ("poor" in "Shopping", which "Describing
 things" holds), and a topic that fits a different sense of the word. It lists
-such passes and fails as examples. A sense may belong to several subjects
-("ticket" in buses and trains and in air travel); each tag is judged on its
-own. The rubric keeps uncertain for a sense or topic it cannot judge at all and
+such passes and fails as examples, and where neighbouring topics meet
+(`TOPIC_BOUNDARIES`): crimes and punishments belong to "Crime and punishment",
+not "Law and justice"; words for travel by any means and for every sport to the
+categories "Travel and transport" and "Sport", not one of their topics;
+clothing worn for an activity to "Clothes and fashion"; dance to "Art". A list-wise
+audit of the published tags found most wrong ones in one of two such neighbours.
+A sense may belong to several subjects ("oven" in houses and homes and in
+cooking and eating); each tag is judged on its own. The rubric keeps uncertain for a sense or topic it cannot judge at all and
 says to fail when it doubts the meaning belongs to the subject; an uncertain
 verdict still publishes, as in every chain. It sees the entry's other senses.
 

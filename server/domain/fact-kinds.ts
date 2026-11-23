@@ -942,6 +942,22 @@ const TOPIC_FAILS = [
 ]
 
 /**
+ * Where the meanings that neighbouring topics both attract belong. A list-wise audit of the
+ * published tags found most wrong tags in one of two neighbours (prison under law, luggage under
+ * air travel), or under a topic named only by a scene (a fax under working life).
+ */
+const TOPIC_BOUNDARIES = [
+  '"Law and justice" holds the legal system, laws, courts, and rights; crimes, criminals, police work, and punishments (prison, fine, sentence) belong to "Crime and punishment".',
+  '"Health problems" holds illnesses, injuries, and symptoms; treatments, medicines, and medical staff belong to "Healthcare"; "Health and fitness" holds exercise, diet, and keeping fit, not general body words (sleep, energy, strength).',
+  'Words for travel by any means (passenger, luggage, fare, connection, first class) belong to the category "Travel and transport", not to "Air travel", "Buses and trains", or "Water transport"; words for every sport (referee, foul, goalkeeper) belong to the category "Sport", not to one sport.',
+  'Clothing worn for an activity (bikini, ski suit) belongs to "Clothes and fashion"; a food belongs to "Food", a drink or drinking vessel to "Drinks", and cooking, kitchen tools, and eating to "Cooking and eating".',
+  '"Houses and homes" holds a home, its rooms, furniture, and housework; building types, construction, and building parts belong to "Buildings"; "Towns and cities" holds settlements and public places.',
+  '"Doubt and certainty" holds being sure or unsure; "Opinion and argument" holds holding and arguing views; agreeing, disagreeing, and promising belong to "Discussion and agreement".',
+  'Dance belongs to "Art"; whales, dolphins, and seals to "Mammals and other animals"; crops named as plants to "Plants and trees"; mining to "Engineering and machines"; "The environment" holds nature\'s protection, pollution, and climate.',
+  'Company finance (accounts, capital, shares) belongs to both "Business" and "Money and the economy"; "Jobs" and "Working life" overlap the same way.',
+]
+
+/**
  * A tag says what subject the sense's meaning belongs to, never a scene it can turn up in: the
  * taxonomy is one of subjects, and scenes are a resource of their own. An audit of the scene-style
  * rubric found loose tags ("full" in hotels, "stop" in driving) and general words with nowhere to
@@ -957,7 +973,9 @@ function topicRubric(sense: SubjectViews['sense'] & GlossedSense, topic: TopicVi
     ...TOPIC_PASSES.map((example) => `- ${example}`),
     'fail when the sense is general-purpose and its meaning belongs to no one subject; when the link is only a scene the sense can turn up in or a loose association; when another topic of the taxonomy holds the meaning more precisely; or when the topic fits a different sense of the word, not this one. For example:',
     ...TOPIC_FAILS.map((example) => `- ${example}`),
-    'A sense may belong to several subjects ("ticket" in buses and trains and in air travel); judge only this one.',
+    'Where neighbouring topics meet:',
+    ...TOPIC_BOUNDARIES.map((boundary) => `- ${boundary}`),
+    'A sense may belong to several subjects ("oven" in houses and homes and in cooking and eating); judge only this one.',
     'uncertain: only when you cannot judge the sense or the topic at all. If you doubt whether the meaning belongs to the subject, fail.',
     listSenses('Other senses of this entry, for reference', sense.siblings),
   ].join('\n')
